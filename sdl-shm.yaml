@@ -1,0 +1,83 @@
+---
+version: "2.0"
+services:
+  mariadb:
+    image: mariadb:latest
+    expose:
+      - port: 3306
+        as: 3306
+        to:
+          - global: true
+          - service: backup
+    env:
+      - MARIADB_ROOT_PASSWORD=your_secure_password
+      - MARIADB_DATABASE=main_db
+    params:
+      storage:
+        shm:
+          mount: /dev/shm
+          readOnly: false
+  backup:
+    image: alpine:latest
+    expose:
+      - port: 80
+        as: 80
+        to:
+          - global: true
+    command:
+      - sh
+      - "-c"
+      - |
+        apk add --no-cache mariadb-client rclone wget
+        wget -O /backup.sh https://raw.githubusercontent.com/eluvietiee/mariadb-backup/refs/heads/main/backup.sh
+        chmod +x /backup.sh
+        echo "*/1 * * * * /backup.sh" | crontab -
+        crond -f
+    env:
+      - DB_HOST=mariadb
+      - DB_USER=root
+      - DB_PASSWORD=your_secure_password
+      - STORJ_ACCESS_KEY=your_storj_access_key
+      - STORJ_SECRET_KEY=your_storj_secret_key
+      - STORJ_BUCKET=your_storj_bucket
+profiles:
+  compute:
+    mariadb:
+      resources:
+        cpu:
+          units: 1
+        memory:
+          size: 512Mi
+        storage:
+          - size: 1Gi
+          - name: shm
+            size: 1Gi
+            attributes:
+              persistent: false
+              class: ram
+    backup:
+      resources:
+        cpu:
+          units: 1
+        memory:
+          size: 256Mi
+        storage:
+          - size: 1Gi
+  placement:
+    dcloud:
+      pricing:
+        mariadb:
+          denom: uakt
+          amount: 100000
+        backup:
+          denom: uakt
+          amount: 100000
+deployment:
+  mariadb:
+    dcloud:
+      profile: mariadb
+      count: 1
+  backup:
+    dcloud:
+      profile: backup
+      count: 1
